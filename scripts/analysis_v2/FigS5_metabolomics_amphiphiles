@@ -1,0 +1,27 @@
+source("fig_common.R")
+DIR <- "/data/habib/metagenome/biosurfactant/analysis_v2_community_abundance"
+
+# detected winter amphiphiles (from companion metabolomics), grouped by structural class
+met <- tibble::tribble(
+  ~class,                         ~tier,
+  "Lysophospholipid","Tier 1", "Lysophospholipid","Tier 1", "Lysophospholipid","Tier 1",
+  "Lysophospholipid","Tier 1", "Lysophospholipid","Tier 1",
+  "Phosphono-fatty acid ester","Tier 1", "Phosphono-fatty acid ester","Tier 1",
+  "Glycerophosphocholine","Tier 1", "Glyceride conjugate","Tier 1",
+  "Sphingoid base","Tier 1",
+  "Carnitine ester","Tier 2", "Carotenoid glycoside","Tier 2", "Glycosylated lipid","Tier 2")
+d <- met %>% count(class, tier) %>%
+  mutate(class=factor(class, levels=rev(c("Lysophospholipid","Phosphono-fatty acid ester",
+    "Glycerophosphocholine","Glyceride conjugate","Sphingoid base",
+    "Carnitine ester","Carotenoid glycoside","Glycosylated lipid"))))
+p <- ggplot(d, aes(n, class, fill=tier)) +
+  geom_col(width=.66) +
+  geom_text(aes(label=n), hjust=-0.4, size=3) +
+  scale_fill_manual(values=c("Tier 1"="#2a78d6","Tier 2"="#9ec7e8"), name="Annotation tier") +
+  scale_x_continuous(breaks=0:6, expand=expansion(mult=c(0,.15))) +
+  labs(x="Number of detected compounds", y=NULL,
+       subtitle="Winter amphiphile pool is dominated by membrane-derived lysophospholipids") +
+  theme_pub() + theme(legend.position="top", plot.subtitle=element_text(size=9))
+ggsave(file.path(DIR,"FigS5_metabolomics_amphiphiles.pdf"), p, width=8, height=4.5)
+ggsave(file.path(DIR,"FigS5_metabolomics_amphiphiles.png"), p, width=8, height=4.5, dpi=300)
+message("wrote FigS5")

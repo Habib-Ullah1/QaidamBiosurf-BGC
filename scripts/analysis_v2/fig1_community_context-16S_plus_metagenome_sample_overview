@@ -1,0 +1,47 @@
+source("fig_common.R")
+DIR <- "/data/habib/metagenome/biosurfactant/analysis_v2_community_abundance"
+S16 <- "/data/habib/metagenome/biosurfactant/16S_data/level-6.csv"
+
+raw <- readr::read_csv(S16, show_col_types=FALSE)
+# first col = 'index' = sample IDs; all other cols = taxonomy strings with counts
+long <- raw %>% rename(sample=index) %>%
+  mutate(across(-sample, as.numeric)) %>%              # force counts numeric BEFORE pivot
+  pivot_longer(-sample, names_to="taxon", values_to="count") %>%
+  filter(!is.na(count))
+
+mg <- c("C3","C6","H2","H6")
+getg <- function(x){ g<-str_match(x,"g__([^;]*)")[,2]
+  ifelse(is.na(g)|g=="", "unresolved", g) }
+
+comp <- long %>% filter(sample %in% mg) %>%
+  group_by(sample) %>% mutate(rel=100*count/sum(count)) %>% ungroup() %>%
+  mutate(season=ifelse(substr(sample,1,1)=="C","summer","winter"), genus=getg(taxon))
+top <- comp %>% group_by(genus) %>% summarise(t=sum(rel)) %>% arrange(desc(t)) %>%
+  slice_head(n=12) %>% pull(genus)
+comp2 <- comp %>% mutate(genus=ifelse(genus %in% top, genus, "other")) %>%
+  group_by(sample,season,genus) %>% summarise(rel=sum(rel), .groups="drop")
+p1a <- ggplot(comp2, aes(sample, rel, fill=genus)) + geom_col(width=.7) +
+  scale_fill_manual(values=setNames(
+     colorRampPalette(RColorBrewer::brewer.pal(12,"Paired"))(length(unique(comp2$genus))),
+     unique(comp2$genus)), name="Genus (16S)") +
+  facet_grid(~season, scales="free_x", space="free_x") +
+  labs(x=NULL, y="Relative abundance (%)", subtitle="16S composition (metagenome samples)") +
+  theme_pub() + theme(legend.text=element_text(size=7), legend.key.size=unit(9,"pt"))
+
+# all 13 sediment samples: seasonal genus means (abundant genera only)
+sed <- long %>% mutate(season=case_when(grepl("^C",sample)~"summer",
+                       grepl("^H",sample)~"winter", TRUE~NA_character_)) %>%
+  filter(!is.na(season)) %>% group_by(sample) %>% mutate(rel=100*count/sum(count)) %>% ungroup() %>%
+  mutate(genus=getg(taxon)) %>% filter(genus!="unresolved") %>%
+  group_by(season,genus) %>% summarise(mean_rel=mean(rel), .groups="drop") %>%
+  group_by(genus) %>% filter(sum(mean_rel)>2) %>% ungroup()
+p1b <- ggplot(sed, aes(season, mean_rel, fill=season)) + geom_col(width=.6) +
+  facet_wrap(~genus, scales="free_y", ncol=5) +
+  scale_fill_manual(values=SEASON, guide="none") +
+  labs(x=NULL, y="Mean relative abundance (%)", subtitle="Seasonal genus shift (16S)") +
+  theme_pub(10) + theme(strip.text=element_text(size=6.5, face="italic"))
+
+fig1 <- (p1a / p1b) + plot_layout(heights=c(1,1.1)) + plot_annotation(tag_levels="A")
+ggsave(file.path(DIR,"Fig1_community_context.pdf"), fig1, width=10, height=9)
+ggsave(file.path(DIR,"Fig1_community_context.png"), fig1, width=10, height=9, dpi=300)
+message("wrote Fig1")

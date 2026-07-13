@@ -1,0 +1,52 @@
+source("fig_common.R")
+DIR <- "/data/habib/metagenome/biosurfactant/analysis_v2_community_abundance"
+sf <- read_tsv(file.path(DIR,"seasonal_function_summary.tsv"), show_col_types=FALSE)
+message(">>> function rows in file:\n", paste(sf[["function"]], collapse="\n"))  # DIAGNOSTIC
+
+want <- tribble(~pat,~lab,~class,
+  "phospholipaseA|phospholipase A","Phospholipase A","Membrane remodeling",
+  "lysophospholipase","Lysophospholipase","Membrane remodeling",
+  "desaturase","Fatty-acid desaturase","Membrane remodeling",
+  "cardiolipin|cfa","Cardiolipin / cfa","Membrane remodeling",
+  "wza","EPS export (wza)","Secreted EPS/capsule",
+  "wzc","EPS export (wzc)","Secreted EPS/capsule")
+d4a <- want %>% rowwise() %>% mutate(row=list(pick_fn(sf,pat))) %>% unnest(row) %>%
+  mutate(l2=log2(winter_TPM/summer_TPM))
+stopifnot(nrow(d4a)>0)
+p4a <- ggplot(d4a, aes(l2, reorder(lab,l2), fill=class)) +
+  geom_vline(xintercept=0, color="grey60") + geom_col(width=.6) +
+  scale_fill_manual(values=c("Membrane remodeling"="#2a78d6","Secreted EPS/capsule"="#1baf7a"),name=NULL)+
+  labs(x=expression(log[2]*"(winter / summer TPM)"), y=NULL,
+       subtitle="Surface-active response (all winter-enriched)") +
+  theme_pub() + theme(legend.position="top")
+
+cz <- read_tsv(file.path(DIR,"cazy_family_tpm.tsv"), show_col_types=FALSE) %>%
+  mutate(class=str_extract(family,"^(GH|GT|PL|CE|CBM|AA)")) %>% filter(!is.na(class)) %>%
+  group_by(class) %>% summarise(summer=sum(summer),winter=sum(winter),.groups="drop") %>%
+  mutate(l2=log2(winter/summer))
+p4b <- ggplot(cz, aes(l2, reorder(class,l2))) +
+  geom_vline(xintercept=0, color="grey60") +
+  geom_segment(aes(x=0,xend=l2,yend=class), color="#2a78d6", linewidth=1) +
+  geom_point(color="#2a78d6", size=4) +
+  labs(x=expression(log[2]*"(winter / summer TPM)"), y="CAZy class",
+       subtitle="Carbohydrate-active enzymes") + theme_pub()
+
+carr <- tribble(~genus,~fun,~TPM,
+  "Moraxella_A","EPS export",36.5,"Loktanella","EPS export",16.3,
+  "Roseovarius","EPS export",11.2,"Halomonas_B","EPS export",1.6,
+  "Moraxella_A","Phospholipase",13.2,"Loktanella","Phospholipase",9.1,
+  "Roseovarius","Phospholipase",3.4,"Halomonas_B","Phospholipase",2.2,
+  "Moraxella_A","Desaturase",22.2,"Roseovarius","Desaturase",1.0)
+grid <- expand_grid(genus=unique(carr$genus), fun=unique(carr$fun)) %>%
+  left_join(carr, by=c("genus","fun")) %>% mutate(genus=clean_genus(genus))
+p4c <- ggplot(grid, aes(fun, genus, fill=TPM)) +
+  geom_tile(color="white") +
+  geom_text(aes(label=ifelse(is.na(TPM),"n.d.",sprintf("%.1f",TPM))), size=3) +
+  scale_fill_gradient(low="#eef4fb", high="#2a78d6", na.value="grey92", name="Winter TPM") +
+  labs(x=NULL,y=NULL,subtitle="Verified carriers (KO + PFAM confirmed)") +
+  theme_pub() + theme(axis.text.x=element_text(angle=25,hjust=1))
+
+fig4 <- (p4a | p4b) / p4c + plot_layout(heights=c(1,.85)) + plot_annotation(tag_levels="A")
+ggsave(file.path(DIR,"Fig4_amphiphile_response.pdf"), fig4, width=11, height=8)
+ggsave(file.path(DIR,"Fig4_amphiphile_response.png"), fig4, width=11, height=8, dpi=300)
+message("wrote Fig4")
